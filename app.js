@@ -76,16 +76,6 @@ module.exports = function (db) {
     }
 
     /**
-     * add db object for the current request
-     * @param next
-     */
-    function* setDBForRequest(next) {
-        assert(mongoDB, 'db object required');
-        this.mongoDb = mongoDB;
-        yield next;
-    }
-
-    /**
      * set the collection name defined by the pathparameter into the request
      * @param collName
      * @param next
@@ -97,6 +87,13 @@ module.exports = function (db) {
         console.log('CollectionName:', collName);
         this.collectionName = collName;
         this.mongoCollection = this.mongoDb.collection(this.collectionName);
+        console.log('query:',this.query);
+        if (this.query.skip){
+            this.skipRecords=this.query.skip;
+        }
+        if (this.query.limit){
+            this.limitRecords=this.query.limit;
+        }
         yield next;
     }
 
@@ -104,12 +101,20 @@ module.exports = function (db) {
      * find all entries in the collection defined by the request.
      */
     function* findAll() {
-        console.log('enter list');
         assert(this.mongoDb, 'db object required');
         assert(this.collectionName, 'collection name required');
+        var limit = 99999;
+        var skip = 0;
+        if (this.skipRecords){
+            skip=Number(this.skipRecords);
+        }
+        if (this.limitRecords){
+            limit=Number(this.limitRecords);
+        }
+        console.log('findAll collection:',this.collectionName,'skip:',skip,'limit:',limit);
 
         // Peform a simple find and return all the documents
-        this.body = yield this.mongoCollection.find().toArray();
+        this.body = yield this.mongoCollection.find().skip(skip).limit(limit).toArray();
     }
 
     return app;
