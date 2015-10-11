@@ -4,22 +4,17 @@
 
 var koa = require('koa');
 var serve = require('koa-static');
-var route = require('koa-route');
+var koaRouter = require('koa-router');
 var logger = require('koa-logger');
-var parse = require('co-body');
+var koaBody   = require('koa-body')
 var assert = require('assert');
 var json = require('koa-json');
-var MongoClient = require('mongodb').MongoClient;
+var mongoDB = require('mongodb');
+var MongoObjectID = mongoDB.ObjectID
+var MongoClient = mongoDB.MongoClient;
 var paramify = require('koa-params');
 
-route = paramify(route);
-/**
- * Route shortcuts.
- */
 
-var get = route.get;
-var post = route.post;
-var put = route.put;
 
 /**
  *
@@ -41,12 +36,20 @@ module.exports = function (db) {
 
 
     var app = koa();
+    var bodyParser =koaBody();
+    var router = koaRouter();
 
     app.use(logger());
     app.use(json());
     app.use(serve(__dirname + '/public'));
-    route.param('collectionName', setDBAndCollectionForRequest);
-    app.use(get('/:collectionName', findAll));
+    app.use(bodyParser);
+    router.param('collectionName', setDBAndCollectionForRequest);
+    router.get('/:collectionName', findAllObjects);
+    router.get('/:collectionName/:id', findObjectById);
+    router.post('/:collectionName',saveObject);
+    router.put('/:collectionName',updateObject);
+    router.del('/:collectionName/:id', deleteObjectById);
+    app.use(router.routes());
 
 
     /**
@@ -100,9 +103,8 @@ module.exports = function (db) {
     /**
      * find all entries in the collection defined by the request.
      */
-    function* findAll() {
-        assert(this.mongoDb, 'db object required');
-        assert(this.collectionName, 'collection name required');
+    function* findAllObjects(next) {
+        assert(this.mongoCollection, 'mongo collection required');
         var limit = 99999;
         var skip = 0;
         if (this.skipRecords){
@@ -111,10 +113,44 @@ module.exports = function (db) {
         if (this.limitRecords){
             limit=Number(this.limitRecords);
         }
-        console.log('findAll collection:',this.collectionName,'skip:',skip,'limit:',limit);
+        console.log('findAll collection:','skip:',skip,'limit:',limit);
 
         // Peform a simple find and return all the documents
         this.body = yield this.mongoCollection.find().skip(skip).limit(limit).toArray();
+        yield next;
+    }
+
+    function* findObjectById(next){
+        assert(this.params.id, 'param id must be set in the path');
+        console.log('find object:',this.params.id);
+        this.body = this.params.id;
+        yield next;
+    }
+
+    function* deleteObjectById(next){
+        assert(this.params.id, 'param id must be set in the path');
+        console.log('delete object:',this.params.id);
+        this.body = this.params.id;
+        yield next;
+    }
+
+    function* saveObject(next){
+        assert(this.mongoCollection, 'mongo collection required');
+        var objectID = new MongoObjectID();
+        console.log('request object:',this.request.body,objectID);
+        this.request.body._id=objectID;
+        var obj = this.request.body;
+        console.log('persist object',this.request.body);
+        var res=yield this.mongoCollection.insertOne(this.request.body);
+        this.body = this.request.body;
+        yield next;
+    }
+
+    function* updateObject(next){
+        assert(this.mongoCollection, 'mongo collection required');
+        console.log('persist object:',this.request.body);
+        this.body = this.request.body;
+        yield next;
     }
 
     return app;
